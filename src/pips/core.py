@@ -45,6 +45,10 @@ class PIPSSolver:
             interactive:  Whether to use interactive mode (wait for user feedback).
             critic_model: Optional separate model for criticism (defaults to main model).
         """
+        if not isinstance(max_iterations, int) or max_iterations < 0:
+            raise ValueError("max_iterations must be a nonnegative integer")
+        if max_tokens <= 0 or not 0 < top_p <= 1:
+            raise ValueError("max_tokens must be positive and top_p must be in (0, 1]")
         self.model = model
         self.critic_model = critic_model or model
         self.max_iterations = max_iterations
@@ -107,7 +111,7 @@ Make sure to follow these formatting requirements exactly.
             if (
                 isinstance(candidate, list)
                 and len(candidate) == 10
-                and all(isinstance(x, (int, float)) for x in candidate)
+                and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in candidate)
             ):
                 floats = [float(x) for x in candidate]
                 if all(0.0 <= x <= 1.0 for x in floats):
@@ -883,7 +887,7 @@ Make sure to follow these formatting requirements exactly.
         on_exec_start(iteration)
         try:
             out, std, err = python_eval(
-                f"{code}\nsymbols = {str(symbols)}\nanswer = solve(symbols)",
+                f"{code}\nsymbols = {repr(symbols)}\nanswer = solve(symbols)",
                 max_execution_time=max_time,
             )
         except Exception as e:

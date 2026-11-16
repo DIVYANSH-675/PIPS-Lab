@@ -34,7 +34,6 @@ dependencies = [
     "anthropic>=0.7.0",
     "google-genai",
     "pillow>=8.0.0",
-    "timeout-decorator>=0.5.0",
 ]
 
 [project.optional-dependencies]
@@ -80,6 +79,9 @@ include = [
     "/src/pips",
     "/README.md",
     "/LICENSE",
+    "/ADDITIONS_LICENSE",
+    "/UPSTREAM_README.md",
+    "/tests",
 ]
 
 [tool.black]

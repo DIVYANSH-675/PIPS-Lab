@@ -1,90 +1,55 @@
-<h1 align="center">PIPS: Per-Instance Program Synthesis</h1>
+# PIPS Lab
 
-<p align="center">
-  <img src="assets/pips_overview.png" width="800">
-</p>
+A maintained extension of [PIPS by Adam Stein and Neelay Velingker](https://github.com/adaminsky/pips), the implementation of **Once Upon an Input: Reasoning via Per-Instance Program Synthesis** (NeurIPS 2025). Extensions by Divyansh Gupta; original authorship, history and MIT notices are retained.
 
-<div align="center">
-<a href="https://arxiv.org/abs/2510.22849"><img alt="Static Badge" src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv&logoColor=white"></a>
-<a href="https://huggingface.co/spaces/steinad/PIPS-demo"><img alt="Static Badge" src="https://img.shields.io/badge/Demo-PIPS-blue?style=flat&logo=huggingface&link=https%3A%2F%2Fhuggingface.co%2Fspaces%2Fsteinad%2FPIPS-demo"></a>
-<img alt="Static Badge" src="https://img.shields.io/badge/License-MIT-yellow?style=flat&link=https%3A%2F%2Fopensource.org%2Flicenses%2FMIT">
-</div>
+PIPS selects between direct LLM reasoning and generated Python programs for each input. This version improves the execution and API paths around that research method.
 
+## Improvements
 
-Per-Instance Program Synthesis (PIPS) is an adaptive reasoning baseline that decides, for every problem instance, whether to run deliberate chain-of-thought reasoning or synthesize executable Python code.
+- Run candidate programs in fresh subprocesses, including when called from UI/background threads.
+- Eliminate the queue-before-join deadlock on large outputs and unreliable `queue.empty()` result detection.
+- Apply execution timeouts to both setup context and generated code. On POSIX, timeout cleanup kills the worker process group.
+- Capture stdout/stderr with a 64 KiB limit and bound serialized answers to 1 MiB.
+- Report context exceptions, abrupt worker exits, invalid results, and timeouts explicitly.
+- Preserve valid answers beginning with `Error:` instead of misclassifying them as exceptions.
+- Execute code exactly once; remove text substitutions that could call `main()` twice or change program meaning.
+- Correctly quote string-valued symbols in the solver, accept text-only `RawInput`, and validate solver settings and probability scores.
+- Keep tests entirely offline using fake model responses, with CI on Linux and Windows.
 
-## News
+These changes improve software reliability; they do not establish better reasoning benchmark scores.
 
-- **[10/26/2025]** Code for PIPS as well as a Gradio demo are released.
-- **[09/18/2025]** PIPS accepted to NeurIPS 2025!
+## Install and use
 
-## Why try PIPS?
-- Adaptive per-instance strategy selection that balances executable program synthesis with fast chain-of-thought reasoning.
-- Iterative code refinement with automatic execution, error recovery, and optional interactive callbacks.
-- Works out-of-the-box as a Python library and ships with a lightweight Gradio UI for quick exploration.
-- Drop-in baseline: import a single class to embed Per-Instance Program Synthesis inside your stack.
-
-## Install with uv
 ```bash
-git clone <repository-url>
-cd PIPS
-uv venv
+python -m venv .venv
 source .venv/bin/activate
-uv sync --editable .
+python -m pip install -e '.[dev]'
+python -m pytest -q
 ```
 
-To include optional dependencies:
-- `uv sync --group gradio` enables the browser UI.
-- `uv sync --group dev` installs linting and test tooling.
-
-Install multiple groups at once with `uv sync --group gradio --group dev`.
-
-## Configure providers
-Export whichever API keys you plan to use:
-```bash
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
-export GOOGLE_API_KEY="..."
-```
-Only one key is required to get started.
-
-## Use PIPS from Python
 ```python
 from pips import PIPSSolver, get_model
 from pips.utils import RawInput
 
-model = get_model("gpt-4o", api_key="your-openai-api-key")
-solver = PIPSSolver(model=model, max_iterations=8, temperature=0.0)
-
-problem = RawInput(text_input="What is the sum of the first 10 prime numbers?")
-answer, telemetry, mode_decision = solver.solve(problem, stream=False)
-print("Answer:", answer)
-
-# Inspect the selected mode
-print("Mode:", "code" if mode_decision["use_code"] else "chain-of-thought")
-```
-Set `stream=True` and pass callbacks such as `on_llm_streaming_token` or
-`on_step_update` to receive incremental updates. For complete control you can
-call `solve_with_code` or `solve_chain_of_thought` directly, and the same
-callbacks work for both.
-
-## Run the Gradio App
-Install the Gradio extra and launch the browser experience:
-```bash
-uv sync --group gradio
-uv run python -m pips.gradio_app
+# Supply your provider credential through its environment variable.
+model = get_model('gpt-4o')
+solver = PIPSSolver(model=model, max_iterations=8)
+answer, telemetry, decision = solver.solve(
+    RawInput(text_input='What is the sum of the first ten prime numbers?'),
+    stream=False,
+)
 ```
 
-## Supported providers
-PIPS supports any OpenAI, Anthropic, or Google model through their API
-endpoints. Models hosted with VLLM are also supported.
+Provider-backed runs require credentials and incur the provider's costs. No paid model calls were used for validation. See the [upstream usage guide](UPSTREAM_README.md) for the Gradio app, provider setup, and interactive solving.
 
-## Development and tests
-Install dev tooling and run the test suite:
-```bash
-uv sync --group dev
-uv run pytest
-```
+## Execution contract
 
-## License
-MIT
+`python_eval(code, code_context=None, max_execution_time=5)` returns `(answer, output, error)`. Code must assign its result to `answer`. JSON-compatible results preserve their types; other objects use `repr`. Infinite or NaN numeric answers also use a string representation. Captured output includes stderr and a truncation marker when needed.
+
+The worker uses the standard library in an isolated interpreter; code relying on arbitrary installed third-party packages may need a different execution backend. A subprocess timeout is **not a security sandbox**: local execution still has access to the current user's files and network. Do not expose this executor as an unrestricted public service. No containment against deliberately hostile generated code is claimed.
+
+## Validation
+
+The suite covers full fake-model solver flows, string symbols, context errors, error-shaped answers, large outputs, abrupt process exit, timeouts, threaded execution, and one-time program execution. Live provider APIs and hosted Gradio behavior have not been exercised in this revision.
+
+License: [original MIT](LICENSE). New contributions: [MIT additions](ADDITIONS_LICENSE). Original paper and citations remain in [UPSTREAM_README.md](UPSTREAM_README.md).
